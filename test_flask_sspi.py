@@ -1,6 +1,6 @@
 import flask
-import flask_kerberos
-import kerberos
+import flask_sspi
+import sspi
 import mock
 import unittest
 
@@ -11,7 +11,7 @@ class BasicAppTestCase(unittest.TestCase):
         app.config['TESTING'] = True
 
         @app.route('/')
-        @flask_kerberos.requires_authentication
+        @flask_sspi.requires_authentication
         def index(user):
             return user
 
@@ -24,17 +24,17 @@ class BasicAppTestCase(unittest.TestCase):
         header field which indicates the server supports Negotiate
         authentication.
         '''
-        flask_kerberos.init_kerberos(self.app, 'HTTP', 'example.org')
+        flask_sspi.init_sspi(self.app, 'HTTP', 'example.org')
         c = self.app.test_client()
         r = c.get('/')
         self.assertEqual(r.status_code, 401)
         self.assertEqual(r.headers.get('www-authenticate'), 'Negotiate')
 
-    @mock.patch('kerberos.authGSSServerInit')
-    @mock.patch('kerberos.authGSSServerStep')
-    @mock.patch('kerberos.authGSSServerResponse')
-    @mock.patch('kerberos.authGSSServerUserName')
-    @mock.patch('kerberos.authGSSServerClean')
+    @mock.patch('sspi.authGSSServerInit')
+    @mock.patch('sspi.authGSSServerStep')
+    @mock.patch('sspi.authGSSServerResponse')
+    @mock.patch('sspi.authGSSServerUserName')
+    @mock.patch('sspi.authGSSServerClean')
     def test_authorized(self, clean, name, response, step, init):
         '''
         Ensure that when the client sends an correct authorization token,
@@ -42,11 +42,11 @@ class BasicAppTestCase(unittest.TestCase):
         passed on to the routed method.
         '''
         state = object()
-        init.return_value = (kerberos.AUTH_GSS_COMPLETE, state)
-        step.return_value = kerberos.AUTH_GSS_COMPLETE
+        init.return_value = (sspi.AUTH_GSS_COMPLETE, state)
+        step.return_value = sspi.AUTH_GSS_COMPLETE
         name.return_value = "user@EXAMPLE.ORG"
         response.return_value = "STOKEN"
-        flask_kerberos.init_kerberos(self.app, 'HTTP', 'example.org')
+        flask_sspi.init_sspi(self.app, 'HTTP', 'example.org')
         c = self.app.test_client()
         r = c.get('/', headers={'Authorization': 'Negotiate CTOKEN'})
         self.assertEqual(r.status_code, 200)
@@ -58,22 +58,22 @@ class BasicAppTestCase(unittest.TestCase):
         self.assertEqual(response.mock_calls, [mock.call(state)])
         self.assertEqual(clean.mock_calls, [mock.call(state)])
 
-    @mock.patch('kerberos.authGSSServerInit')
-    @mock.patch('kerberos.authGSSServerStep')
-    @mock.patch('kerberos.authGSSServerResponse')
-    @mock.patch('kerberos.authGSSServerUserName')
-    @mock.patch('kerberos.authGSSServerClean')
+    @mock.patch('sspi.authGSSServerInit')
+    @mock.patch('sspi.authGSSServerStep')
+    @mock.patch('sspi.authGSSServerResponse')
+    @mock.patch('sspi.authGSSServerUserName')
+    @mock.patch('sspi.authGSSServerClean')
     def test_authorized_no_mutual_auth(self, clean, name, response, step, init):
         '''
         Ensure that when a client does not request mutual authentication, we
         don't provide a token & that we don't throw an exception.
         '''
         state = object()
-        init.return_value = (kerberos.AUTH_GSS_COMPLETE, state)
-        step.return_value = kerberos.AUTH_GSS_COMPLETE
+        init.return_value = (sspi.AUTH_GSS_COMPLETE, state)
+        step.return_value = sspi.AUTH_GSS_COMPLETE
         name.return_value = "user@EXAMPLE.ORG"
         response.return_value = None
-        flask_kerberos.init_kerberos(self.app, 'HTTP', 'example.org')
+        flask_sspi.init_sspi(self.app, 'HTTP', 'example.org')
         c = self.app.test_client()
         r = c.get('/', headers={'Authorization': 'Negotiate CTOKEN'})
         self.assertEqual(r.status_code, 200)
@@ -85,20 +85,20 @@ class BasicAppTestCase(unittest.TestCase):
         self.assertEqual(response.mock_calls, [mock.call(state)])
         self.assertEqual(clean.mock_calls, [mock.call(state)])
 
-    @mock.patch('kerberos.authGSSServerInit')
-    @mock.patch('kerberos.authGSSServerStep')
-    @mock.patch('kerberos.authGSSServerResponse')
-    @mock.patch('kerberos.authGSSServerUserName')
-    @mock.patch('kerberos.authGSSServerClean')
+    @mock.patch('sspi.authGSSServerInit')
+    @mock.patch('sspi.authGSSServerStep')
+    @mock.patch('sspi.authGSSServerResponse')
+    @mock.patch('sspi.authGSSServerUserName')
+    @mock.patch('sspi.authGSSServerClean')
     def test_forbidden(self, clean, name, response, step, init):
         '''
         Ensure that when the client sends an incorrect authorization token,
         they receive a 403 Forbidden response.
         '''
         state = object()
-        init.return_value = (kerberos.AUTH_GSS_COMPLETE, state)
-        step.side_effect = kerberos.GSSError("FAILURE")
-        flask_kerberos.init_kerberos(self.app, 'HTTP', 'example.org')
+        init.return_value = (sspi.AUTH_GSS_COMPLETE, state)
+        step.side_effect = sspi.GSSError("FAILURE")
+        flask_sspi.init_sspi(self.app, 'HTTP', 'example.org')
         c = self.app.test_client()
         r = c.get('/', headers={'Authorization': 'Negotiate CTOKEN'})
         self.assertEqual(r.status_code, 403)

@@ -1,34 +1,34 @@
 """
-Flask-Kerberos
+Flask-SSPI
 --------------
 
-Provides Kerberos authentication support for Flask applications
+Provides SSPI authentication support for Flask applications
 
 Links
 `````
 
-* `documentation <https://flask-kerberos.readthedocs.org/en/latest/>`_
+* `documentation <https://flask-sspi.readthedocs.org/en/latest/>`_
 * `development version
-  <http://github.com/mkomitee/flask-kerberos/zipball/master#egg=Flask-Kerberos-dev>`_
+  <http://github.com/mkomitee/flask-sspi/zipball/master#egg=Flask-SSPI-dev>`_
 
 """
 
 from setuptools import setup
 
-setup(name='Flask-Kerberos',
-      version='1.0.4',
-      url='http://github.com/mkomitee/flask-kerberos',
+setup(name='Flask-SSPI',
+      version='1.0.0',
+      url='http://github.com/mkomitee/flask-sspi',
       license='BSD',
       author='Michael Komitee',
       author_email='mkomitee@gmail.com',
-      description='Kerberos authentication support for Flask',
+      description='SSPI authentication support for Flask',
       long_description=__doc__,
-      py_modules=['flask_kerberos'],
+      py_modules=['flask_sspi'],
       zip_safe=False,
       include_package_data=True,
       package_data={'': ['LICENSE', 'AUTHORS']},
       platforms='any',
-      install_requires=['Flask', 'kerberos'],
+      install_requires=['Flask', 'sspi'],
       classifiers=['Development Status :: 4 - Beta',
                    'Environment :: Web Environment',
                    'Intended Audience :: Developers',
@@ -37,5 +37,5 @@ setup(name='Flask-Kerberos',
                    'Programming Language :: Python',
                    'Topic :: Internet :: WWW/HTTP',
                    'Topic :: Software Development :: Libraries :: Python Modules'],
-      test_suite='test_flask_kerberos',
+      test_suite='test_flask_sspi',
       tests_require=['mock'])

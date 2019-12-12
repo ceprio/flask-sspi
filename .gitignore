@@ -1,0 +1,5 @@
+*.pyproj
+*.sln
+*.suo
+__pycache__/
+*.ffs_db

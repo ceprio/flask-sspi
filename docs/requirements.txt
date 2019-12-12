@@ -1,2 +1,2 @@
 Flask>=0.10.1
-kerberos>=1.1.1
+sspi>=1.1.1
