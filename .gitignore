@@ -3,3 +3,5 @@
 *.suo
 __pycache__/
 *.ffs_db
+.project
+.pydevproject

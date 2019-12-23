@@ -1,3 +1,13 @@
+##################################
+# DOES NOT WORK 
+# KEPT ONLY FOR FUTURE IMPROVEMENT
+##################################
+
+print('Warning: This script does not work, it as not been ported yet')
+print('You can manually test with example/example.py')
+exit()
+
+##################################
 import flask
 import flask_sspi
 import sspi
@@ -28,7 +38,7 @@ class BasicAppTestCase(unittest.TestCase):
         c = self.app.test_client()
         r = c.get('/')
         self.assertEqual(r.status_code, 401)
-        self.assertEqual(r.headers.get('www-authenticate'), 'Negotiate')
+        self.assertEqual(r.headers.get('www-authenticate'), 'NTLM')
 
     @mock.patch('sspi.authGSSServerInit')
     @mock.patch('sspi.authGSSServerStep')

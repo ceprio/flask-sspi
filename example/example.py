@@ -3,6 +3,9 @@
 import sys
 sys.path.append("../")
 
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
 from flask import Flask
 from flask import render_template
 from flask_sspi import init_sspi
@@ -12,6 +15,7 @@ DEBUG=True
 
 app = Flask(__name__)
 app.config.from_object(__name__)
+app.secret_key = 'efca0226-1746-43f6-92ac-1975e1eea085'
 
 
 @app.route("/")

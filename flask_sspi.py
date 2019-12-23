@@ -1,23 +1,24 @@
 import sspi, sspicon
 import win32api
 import base64
-import threading
+import logging
+logger = logging.getLogger(__name__)
 
 from flask import Response
 from flask import _request_ctx_stack as stack
 from flask import make_response
-from flask import request
+from flask import request, session
 from functools import wraps
 from socket import gethostname
 from os import environ
+import datetime
+import uuid
 
 _SERVICE_NAME = None
 _PKG_NAME = 'NTLM'
-_sa = sspi.ServerAuth(_PKG_NAME) # should this be per session???
-# def print(*args, **kwargs):
-    # pass
+_sessions = {}
 
-def init_sspi(app, service='HTTP', hostname=gethostname()):
+def init_sspi(app, service='HTTP', hostname=gethostname(), package='NTLM'):
     '''
     Configure the SSPI service, and validate the presence of the
     appropriate informations if necessary.
@@ -28,9 +29,12 @@ def init_sspi(app, service='HTTP', hostname=gethostname()):
     :type service: str
     :param hostname: hostname the service runs under
     :type hostname: str
+    :param package: package the service runs under ('NTLM') ('Negotiate' is not yet implemented)
+    :type package: str
     '''
     global _SERVICE_NAME
     _SERVICE_NAME = "%s@%s" % (service, hostname)
+    _PKG_NAME = package
 
 def _unauthorized(token):
     '''
@@ -39,7 +43,10 @@ def _unauthorized(token):
     :param token: token for the next negotiation or None for the first try
     :type token: str
     '''
-    return Response('Unauthorized', 401, {'WWW-Authenticate': 'NTLM' if not token else token}, mimetype='text/html') # this can also be Negotiate but does not work on my server
+    if not token:
+        return Response('Unauthorized', 401, {'WWW-Authenticate': 'NTLM', 'server':'Microsoft-IIS/8.5'}, mimetype='text/html') # this can also be Negotiate but does not work on my server
+    else:
+        return Response('Unauthorized', 401, {'WWW-Authenticate': token, 'server':'Microsoft-HTTPAPI/2.0'}, mimetype='text/html') # this can also be Negotiate but does not work on my server
 
 def _forbidden():
     '''
@@ -71,26 +78,34 @@ def _sspi_authenticate(token):
     @returns sspi return code or None on failure and token
     @rtype: str or None
     '''
-    ctx = stack.top
-
     if token.startswith(_PKG_NAME):
         recv_token_encoded = ''.join(token.split()[1:])
         recv_token = base64.b64decode(recv_token_encoded)
-        print(recv_token)
+        _sa = _sessions[session['uuid']]['sa']
         try:
             error_code, token = _sa.authorize(recv_token)
         except sspi.error as details:
-            print(f"sspi.error: {details}")
+            logger.debug(f"sspi.error: {details}")
+            #  TODO: Close _sa?
+            del  _sessions[session['uuid']]
             return None, None
         token = token[0].Buffer
         if token:
             token = f"{_PKG_NAME} {base64.b64encode(token).decode('utf-8')}"
         if error_code == sspicon.SECPKG_NEGOTIATION_COMPLETE:
             _sa.ctxt.ImpersonateSecurityContext()
-            ctx.sspi_user=_get_user_name()
+            _sessions[session['uuid']]['username'] = _get_user_name()
+            _sessions[session['uuid']]['last_access'] =  datetime.datetime.now()
             _sa.ctxt.RevertSecurityContext()
         return error_code, token
     raise Exception("Wrong authentication mode")
+
+def _init_session():
+    logger.debug("Init session")
+    session['uuid'] = uuid.uuid4().bytes
+    _sessions[session['uuid']] = {}
+    _sessions[session['uuid']]['sa'] = sspi.ServerAuth(_PKG_NAME) # one per session
+    # TODO cleanup other entries
 
 def requires_authentication(function):
     '''
@@ -105,25 +120,32 @@ def requires_authentication(function):
     '''
     @wraps(function)
     def decorated(*args, **kwargs):
-        print("decorated")
-        recv_token_encoded = request.headers.get("Authorization")
-        token_encoded = None
-        if recv_token_encoded:
-            ctx = stack.top
-            print(f"recv:{recv_token_encoded}")
-            rc, token_encoded = _sspi_authenticate(recv_token_encoded)
-            print(f"send:{token_encoded}")
-            print(f"error_code: {rc}")
-            if rc == sspicon.SECPKG_NEGOTIATION_COMPLETE:
-                print("complete")
-                response = function(ctx.sspi_user, *args, **kwargs)
+        if 'uuid' not in session or session['uuid'] not in _sessions:
+            _init_session()
+        if 'username' in _sessions[session['uuid']]:
+            if 30*60 < (datetime.datetime.now()-_sessions[session['uuid']]['last_access']).seconds:
+                logger.debug('timed out.')
+                del _sessions[session['uuid']]
+                _init_session()
+            else:
+                logger.debug('Already authenticated')  
+                _sessions[session['uuid']]['last_access'] = datetime.datetime.now()
+                response = function(_sessions[session['uuid']]['username'], *args, **kwargs)
                 response = make_response(response)
-                # if token is not None:
-                    # print("with token")
-                    # response.headers['WWW-Authenticate'] = token_encoded
-                return response # passes here a few times while negotiating
+                return response 
+        token_encoded = None
+        recv_token_encoded = request.headers.get("Authorization")
+        if recv_token_encoded:
+            logger.debug(f"recv:{recv_token_encoded}")
+            rc, token_encoded = _sspi_authenticate(recv_token_encoded)
+            if rc == sspicon.SECPKG_NEGOTIATION_COMPLETE:
+                logger.debug("Negotiation complete")
+                response = function(_sessions[session['uuid']]['username'], *args, **kwargs)
+                response = make_response(response)
+                return response 
             elif rc not in (sspicon.SEC_I_CONTINUE_NEEDED, sspicon.SEC_I_COMPLETE_NEEDED,sspicon.SEC_I_COMPLETE_AND_CONTINUE):
+                logger.debug(f"Forbiden rc={rc}")
                 return _forbidden()
-        print(f"_unauthorized({token_encoded})")
-        return _unauthorized(token_encoded) 
+        logger.debug(f"Unauthorized yet, continue: {token_encoded}")
+        return _unauthorized(token_encoded) # token is None on fist pass
     return decorated
