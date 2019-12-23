@@ -23,14 +23,15 @@ or alternatively if you have `pip` installed::
 Limitations
 -----------
 
-Only tested on Chrome. 
+Based on win32 so only works on Windows servers.
 
-For some reason Explorer does not recognise the second `NTLM`_ token that 
+Only tested with Chrome clients. 
+
+For some reason Explorer client does not recognise the second `NTLM`_ token that 
 is sent by the server and stops negotiations and shows the unauthorized page to the client.
 Feel free to submit corrections.
 
 Only `NTLM`_ authentication as been implemented, 'Negotiate' (`Kerberos`_) as not been implemented. 
-Any help on this would be appreciated.
 
 
 How to Use

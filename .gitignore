@@ -5,3 +5,6 @@ __pycache__/
 *.ffs_db
 .project
 .pydevproject
+Flask_SSPI.egg-info/
+dist/
+build/
