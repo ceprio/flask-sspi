@@ -4,7 +4,7 @@ Flask-SSPI
 Flask-SSPI is an extension to `Flask`_ that allows you to trivially add
 `NTLM`_ based authentication to your website. It depends on both Flask and
 `sspi`_. You can install the requirements from PyPI with
-`easy_install` or `pip`, with `conda`, or download them by hand.
+`easy_install` or `pip` or `conda`, or download them by hand.
 
 The official copy of this documentation is available at `Read the Docs`_.
 
