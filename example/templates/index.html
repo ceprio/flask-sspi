@@ -1,11 +1,15 @@
 <!doctype html>
 <html>
     <head>
-        <title>Welcome {{ user }} Flask SSPI Example</title>
+        <title>Welcome to Flask SSPI Examples</title>
         <link rel=stylesheet type=text/css href="{{ url_for('static', filename='style.css') }}">
     </head>
     <body>
-        <h1>Flask SSPI Example</h1>
-        <p>It worked, I think you are {{ user }}.</p>
+        <h1>Flask SSPI Example functions:</h1>
+<ul>
+{% for url, endpoint in links %}
+<li><a href="{{ url }}">{{ endpoint }}</a></li>
+{% endfor %}
+</ul>
     </body>
 </html>

@@ -1,0 +1,12 @@
+<!doctype html>
+<html>
+    <head>
+        <title>Welcome {{ current_user }} Flask SSPI Example</title>
+        <link rel=stylesheet type=text/css href="{{ url_for('static', filename='style.css') }}">
+    </head>
+    <body>
+        <h1>Flask SSPI Example - {{ function }}</h1>
+        <p>It worked, I think you are {{ current_user }}.</p><br><br>
+		<p>These are the groups you belong to: {{ groups }}</p>
+    </body>
+</html>

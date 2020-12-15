@@ -40,8 +40,28 @@ Only `NTLM`_ authentication as been implemented, 'Negotiate' (`Kerberos`_) as no
 How to Use
 ----------
 
-You can decorate any view functions you wish to require authentication, and changing them to 
-accept the authenticated user principal as their first argument::
+First Form (prefered)
+.....................
+
+You can decorate any view functions you wish to require authentication with the
+@authenticate. To get the current user you can use g.current_user::
+
+    from flask-sspi import authenticate
+    from flask import g
+
+    @app.route("/protected/<path:path>")
+    @authenticate
+    def protected_view(path):
+        print(g.current_user)
+        ...
+
+
+Second Form
+...........
+
+You can decorate any view functions you wish to require authentication with @requires_authentication, 
+with this keyword, you need to change them to accept the authenticated user principal as their first 
+argument::
 
     from flask-sspi import requires_authentication
 
@@ -50,15 +70,23 @@ accept the authenticated user principal as their first argument::
     def protected_view(user, path):
         ...
 
+
+
 Flask-SSPI assumes that the service will be running using the hostname of
 the host on which the application is run. If this is not the case, you can
 override it by initializing the module::
 
     from flask-sspi import init_sspi
+    
+    init_sspi(app, hostname='example.com', package='NTLM')
 
-    init_sspi(app, hostname='example.com', package='Negotiate')
+NOTE: 'init_sspi' is optionnal. If used, current_user will be defined 
+within context of jinja templates. You can then use::
 
-This is not needed if using the 'NTLM' package.
+   ...
+   <h1> Hello {{ current_user }} </h1>
+   ...
+
 
 How it works
 ------------
@@ -75,11 +103,11 @@ be validated, the principal of the authenticating user will be extracted, and
 the protected view will be called with the extracted principal passed in as the
 first argument.
 
-Once the protected view returns, a `WWW-Authenticate` header will be added to
+Once the protected view returns, a ``WWW-Authenticate`` header will be added to
 the response which can then be used by the client to authenticate the server.
 This is known as mutual authentication.
 
-SSPI also has the ability to serve the value `Negotiate` from the `WWW-Authenticate` 
+SSPI also has the ability to serve the value ``Negotiate`` from the `WWW-Authenticate` 
 header. This as not been implemented but could be in the future with the help of the 
 community.
 
@@ -89,13 +117,48 @@ Full Example
 To see a simple example, you can download the code `from github
 <http://github.com/ceprio/flask-sspi>`_. It is in the example directory.
 
+Decorators that can be used
+---------------------------
+
+========================== ===========
+Decorator                  Description     
+========================== ===========
+@authenticate              The user must have been identified.
+Impersonate                Context class to impersonate the connecting user: The user's 
+                           credentials will be used to execute the route function. Use 
+                           this to access a database under the user's name per example.
+@requires_authentication   Same as login_required but the ``user`` parameter needs to be 
+                           specified in the arguments of the route function. **user** will contain the name
+                           of the logger user. Kept for backward compatibility.
+========================== ===========
+
+For all ``flask_sspi`` decorators, a ``g.current_user`` entry is created and accessible 
+within the route function. Within html templates the variable current_user is also 
+defined if init_sspi is used.
+
+Using before_request function for Blueprints
+--------------------------------------------
+
+If you want to restrict access to a whole Blueprint, better to do it with the 
+before_request function. Here is an example::
+
+   @blueprint.before_request
+   @authenticate
+   def before_request():
+     pass
+
 Changes
 -------
 
 0.1
-```
+...
 
 -     initial implementation
+
+0.2
+...
+
+-    added the authenticate decorator and the Impersonate context.
 
 
 API References
