@@ -28,11 +28,7 @@ Limitations
 
 Based on win32 so only works on Windows servers.
 
-Only tested with Chrome clients. 
-
-For some reason Explorer client does not recognise the second `NTLM`_ token that 
-is sent by the server and stops negotiations and shows the unauthorized page to the client.
-Feel free to submit corrections.
+Tested with Chrome and Edge browsers. 
 
 Only `NTLM`_ authentication as been implemented, 'Negotiate' (`Kerberos`_) as not been implemented. 
 

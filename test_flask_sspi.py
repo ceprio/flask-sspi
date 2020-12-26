@@ -3,8 +3,8 @@
 # KEPT ONLY FOR FUTURE IMPROVEMENT
 ##################################
 
-print('Warning: This script does not work, it as not been ported yet')
-print('You can manually test with example/example.py')
+print('Warning: This testing script does not work, it as not been ported yet')
+print('You test flask_sspi features with the example found in example/example.py')
 exit()
 
 ##################################
