@@ -1,3 +1,7 @@
+"""
+UNUSED CODE - part of _common may come here later
+
+
 from ._common import _sspi_handler, _sessions, session
 from functools import wraps
 from flask import g
@@ -68,3 +72,4 @@ def impersonate(function):
             response = make_response(response)
             return response 
     return decorated
+"""

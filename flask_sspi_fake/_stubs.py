@@ -1,5 +1,3 @@
-import sspi, sspicon
-import win32api
 import base64
 import logging
 logger = logging.getLogger(__name__)
@@ -47,74 +45,15 @@ def init_sspi(app, service='HTTP', hostname=gethostname(), package='NTLM', add_c
         app.context_processor(_user_context_processor)
 
 
-def _unauthorized(token):
-    '''
-    Indicate that authentication is required
-    
-    :param token: token for the next negotiation or None for the first try
-    :type token: str
-    '''
-    if not token:
-        return Response('Unauthorized', 401, {'WWW-Authenticate': 'NTLM', 'server':'Microsoft-IIS/8.5'}, mimetype='text/html')  # this can also be Negotiate but does not work on my server
-    else:
-        return Response('Unauthorized', 401, {'WWW-Authenticate': token, 'server':'Microsoft-HTTPAPI/2.0'}, mimetype='text/html')  # this can also be Negotiate but does not work on my server
-
-
-def _forbidden():
-    '''
-    Indicate a complete authentication failure
-    '''
-    return Response('Forbidden', 403)
-
-
 def _get_user_name():
-     try:
-         return win32api.GetUserName()
-     except win32api.error as details:
-         # Seeing 'access denied' errors here for non-local users (presumably
-         # without permission to login locally).  Get the fully-qualified
-         # username, although a side-effect of these permission-denied errors
-         # is a lack of Python codecs - so printing the Unicode value fails.
-         # So just return the repr(), and avoid codecs completely.
-         return repr(win32api.GetUserNameEx(win32api.NameSamCompatible))
+     return os.getlogin()
 
-         
-def _sspi_authenticate(token):
-    '''
-    Performs GSSAPI Negotiate Authentication
-
-    On success also stashes the server response token for mutual authentication
-    at the top of request context with the name sspi_token, along with the
-    authenticated user principal with the name sspi_user.
-
-    @param token: Authentication Token
-    @type token: str
-    @returns sspi return code or None on failure and token
-    @rtype: str or None
-    '''
-    if token.startswith(_PKG_NAME):
-        recv_token_encoded = ''.join(token.split()[1:])
-        recv_token = base64.b64decode(recv_token_encoded)
-        _sa = _sessions[session['uuid']]['sa']
-        try:
-            error_code, token = _sa.authorize(recv_token)
-        except sspi.error as details:
-            logger.debug(f"sspi.error: {details}")
-            #  TODO: Close _sa?
-            del  _sessions[session['uuid']]
-            return None, None
-        token = token[0].Buffer
-        if token:
-            token = f"{_PKG_NAME} {base64.b64encode(token).decode('utf-8')}"
-        return error_code, token  # standard exit; different error codes for different stages
-    raise Exception("Wrong authentication mode")
-
-
+ 
 def _init_session():
     logger.debug("Init session")
     session['uuid'] = uuid.uuid4().bytes
     _sessions[session['uuid']] = {}
-    _sessions[session['uuid']]['sa'] = sspi.ServerAuth(_PKG_NAME)  # one per session
+    _sessions[session['uuid']]['sa'] = 'sspi.ServerAuth(_PKG_NAME)'  # one per session
     # TODO cleanup other entries
 
 
@@ -131,19 +70,9 @@ def _sspi_handler(session):
             logger.debug('Already authenticated')  
             _sessions[session['uuid']]['last_access'] = datetime.datetime.now()
             return None
-    token_encoded = None
-    recv_token_encoded = request.headers.get("Authorization")
-    if recv_token_encoded:
-        logger.debug(f"recv:{recv_token_encoded}")
-        rc, token_encoded = _sspi_authenticate(recv_token_encoded)
-        if rc == sspicon.SECPKG_NEGOTIATION_COMPLETE:
-            logger.debug("Negotiation complete")
-            return None
-        elif rc not in (sspicon.SEC_I_CONTINUE_NEEDED, sspicon.SEC_I_COMPLETE_NEEDED, sspicon.SEC_I_COMPLETE_AND_CONTINUE):
-            logger.debug(f"Forbiden rc={rc}")
-            return _forbidden()
-    logger.debug(f"Unauthorized yet, continue: {token_encoded}")
-    return _unauthorized(token_encoded)  # token is None on fist pass
+
+    logger.debug("Negotiation complete")
+    return None
 
 
 class Impersonate():
@@ -163,14 +92,12 @@ class Impersonate():
         '''
         uuid = session['uuid']
         self._sa = _sessions[uuid]['sa']
-        self._sa.ctxt.ImpersonateSecurityContext()
 
     def close(self):
         '''
         End of the impersonalisation
         '''
         if self._sa:
-            self._sa.ctxt.RevertSecurityContext()
             self._sa = None
 
     def __del__(self): 

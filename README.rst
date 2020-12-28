@@ -143,6 +143,14 @@ before_request function. Here is an example::
    def before_request():
      pass
 
+Offsite debugging
+-----------------
+
+You may want to test your ``flask`` application offsite in a non-domain environment. To allow testing 
+without error from ``flask_sspi`` you can issue ``import flask_sspi_fake`` before any reference to 
+``flask_sspi``. ``flask_sspi_fake`` will use stubs instead of the real functions and allow the site
+to be tested under the credentials of the currently logged user.
+
 Changes
 -------
 

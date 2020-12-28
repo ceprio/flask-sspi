@@ -2,21 +2,20 @@
 Flask-SSPI
 --------------
 
-Provides SSPI authentication support for Flask applications
+Provides SSPI authentication support for Flask applications under windows. NTLM is used
+for the challenge/response of the client. 
 
 Links
 `````
 
-* `documentation <https://flask-sspi.readthedocs.org/en/latest/>`_
-* `development version
-  <http://github.com/ceprio/flask-sspi/zipball/master#egg=Flask-SSPI-dev>`_
+* `documentation <http://github.com/ceprio/flask-sspi>`_
 
 """
 
 from setuptools import setup
 
 setup(name='Flask-SSPI',
-      version='0.1.0',
+      version='0.1.1',
       url='http://github.com/ceprio/flask-sspi',
       license='BSD',
       author='ceprio',
@@ -25,6 +24,7 @@ setup(name='Flask-SSPI',
       long_description=__doc__,
       py_modules=['flask_sspi'],
       zip_safe=False,
+      packages=['flask_sspi', 'flask_sspi_fake'],
       include_package_data=True,
       package_data={'': ['LICENSE', 'AUTHORS']},
       platforms='any',

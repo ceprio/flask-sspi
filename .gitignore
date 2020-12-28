@@ -5,6 +5,7 @@ __pycache__/
 *.ffs_db
 .project
 .pydevproject
+.settings/
 Flask_SSPI.egg-info/
 dist/
 build/
