@@ -14,7 +14,7 @@ import os
 import datetime
 import uuid
 
-_PKG_NAME = 'NTLM'
+_PKG_NAME = 'NTLM'  # OR 'Negotiate' in future implementations (for kerberos)
 _sessions = {}
 
 
