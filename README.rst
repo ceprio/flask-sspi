@@ -42,7 +42,7 @@ First Form (prefered)
 You can decorate any view functions you wish to require authentication with the
 @authenticate. To get the current user you can use g.current_user::
 
-    from flask-sspi import authenticate
+    from flask_sspi import authenticate
     from flask import g
 
     @app.route("/protected/<path:path>")
@@ -59,7 +59,7 @@ You can decorate any view functions you wish to require authentication with @req
 with this keyword, you need to change them to accept the authenticated user principal as their first 
 argument::
 
-    from flask-sspi import requires_authentication
+    from flask_sspi import requires_authentication
 
     @app.route("/protected/<path:path>")
     @requires_authentication
@@ -72,7 +72,7 @@ Flask-SSPI assumes that the service will be running using the hostname of
 the host on which the application is run. If this is not the case, you can
 override it by initializing the module::
 
-    from flask-sspi import init_sspi
+    from flask_sspi import init_sspi
     
     init_sspi(app, hostname='example.com', package='NTLM')
 
