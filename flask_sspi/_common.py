@@ -16,6 +16,7 @@ import uuid
 
 _PKG_NAME = 'NTLM'  # OR 'Negotiate' in future implementations (for kerberos)
 _sessions = {}
+_session_duration = 30  # in minutes, time before a user needs to be re-authenticated
 
 
 def _user_context_processor():
@@ -25,7 +26,7 @@ def _user_context_processor():
         return {}
 
 
-def init_sspi(app, service='HTTP', hostname=gethostname(), package='NTLM', add_context_processor=True):
+def init_sspi(app, service='HTTP', hostname=gethostname(), package='NTLM', add_context_processor=True, session_duration=None):
     '''
     Configure the SSPI service, and validate the presence of the
     appropriate informations if necessary.
@@ -38,11 +39,18 @@ def init_sspi(app, service='HTTP', hostname=gethostname(), package='NTLM', add_c
     :type hostname: str
     :param package: package the service runs under ('NTLM') ('Negotiate' is not yet implemented)
     :type package: str
+    :param add_context_processor: Adds a context processor that find the current_user name from flask g variable content
+    :type add_context_processor: bool
+    :param session_duration: in minutes, time before a user needs to be re-authenticated
+    :type session_duration: int
     '''
     global _SERVICE_NAME
     _SERVICE_NAME = "%s@%s" % (service, hostname)
     _PKG_NAME = package
-    
+
+    if session_duration:
+        _session_duration = session_duration
+
     if add_context_processor:
         app.context_processor(_user_context_processor)
 
@@ -78,7 +86,7 @@ def _get_user_name():
          # So just return the repr(), and avoid codecs completely.
          return repr(win32api.GetUserNameEx(win32api.NameSamCompatible))
 
-         
+
 def _sspi_authenticate(token):
     '''
     Performs GSSAPI Negotiate Authentication
@@ -123,12 +131,12 @@ def _sspi_handler(session):
     if 'uuid' not in session or session['uuid'] not in _sessions:
         _init_session()
     if 'username' in _sessions[session['uuid']]:
-        if 30 * 60 < (datetime.datetime.now() - _sessions[session['uuid']]['last_access']).seconds:
+        if _session_duration * 60 < (datetime.datetime.now() - _sessions[session['uuid']]['last_access']).seconds:
             logger.debug('timed out.')
             del _sessions[session['uuid']]
             _init_session()
         else:
-            logger.debug('Already authenticated')  
+            logger.debug('Already authenticated')
             _sessions[session['uuid']]['last_access'] = datetime.datetime.now()
             return None
     token_encoded = None
@@ -156,7 +164,7 @@ class Impersonate():
         with Impersonate():
             ...
     '''
-    
+
     def open(self):
         '''
         Start of the impersonalisation
@@ -173,7 +181,7 @@ class Impersonate():
             self._sa.ctxt.RevertSecurityContext()
             self._sa = None
 
-    def __del__(self): 
+    def __del__(self):
         if self._sa:
             self.close()
 
@@ -216,7 +224,7 @@ def requires_authentication(function):
             # call route function
             response = function(g.current_user, *args, **kwargs)
             response = make_response(response)
-            return response 
+            return response
 
     return decorated
 
@@ -252,6 +260,6 @@ def authenticate(function):
             response = function(*args, **kwargs)
             if response:
                 response = make_response(response)
-            return response 
+            return response
 
     return decorated

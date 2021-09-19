@@ -123,6 +123,10 @@ Decorator                  Description
 Impersonate                Context class to impersonate the connecting user: The user's 
                            credentials will be used to execute the route function. Use 
                            this to access a database under the user's name per example.
+                           !Important: I could not get this to work with an external database 
+                           as it requires a thrusted connection between the web server and the  
+                           SQL database (which I don't have). It should work with a database
+                           located on the same computer.
 @requires_authentication   Same as login_required but the ``user`` parameter needs to be 
                            specified in the arguments of the route function. **user** will contain the name
                            of the logger user. Kept for backward compatibility.
