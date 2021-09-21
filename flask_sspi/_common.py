@@ -8,15 +8,18 @@ from flask import Response
 from flask import _request_ctx_stack as stack
 from flask import make_response
 from flask import request, session, g
+import threading
 from functools import wraps
 from socket import gethostname
 import os
 import datetime
-import uuid
+from uuid import uuid4
 
 _PKG_NAME = 'NTLM'  # OR 'Negotiate' in future implementations (for kerberos)
-_sessions = {}
-_session_duration = 30  # in minutes, time before a user needs to be re-authenticated
+_sessions = {}  # There is going to be one _sessions per process 
+_sessions_lock = threading.Lock()  # each process may have threads
+# time before a user needs to be re-authenticated
+_session_duration = 30  # in minutes, don't change dynamically
 
 
 def _user_context_processor():
@@ -100,44 +103,77 @@ def _sspi_authenticate(token):
     @returns sspi return code or None on failure and token
     @rtype: str or None
     '''
+    global _sessions, _sessions_lock
+    uuid = session['uuid']
     if token.startswith(_PKG_NAME):
         recv_token_encoded = ''.join(token.split()[1:])
         recv_token = base64.b64decode(recv_token_encoded)
-        _sa = _sessions[session['uuid']]['sa']
+        with _sessions_lock:
+            _sa = _sessions[uuid]['sa']
+            lock = _sessions[uuid]['lock']
+            lock.acquire()
         try:
             error_code, token = _sa.authorize(recv_token)
         except sspi.error as details:
             logger.debug(f"sspi.error: {details}")
             #  TODO: Close _sa?
-            del  _sessions[session['uuid']]
+            with _sessions_lock:
+                del  _sessions[uuid]
             return None, None
+        finally:
+            lock.release()
         token = token[0].Buffer
         if token:
             token = f"{_PKG_NAME} {base64.b64encode(token).decode('utf-8')}"
         return error_code, token  # standard exit; different error codes for different stages
     raise Exception("Wrong authentication mode")
 
+def cleanup_sessions():
+    # cleanup other entries according to 'last_access'
+    global _sessions, _sessions_lock
+    with _sessions_lock:
+        del_sessions = []
+        for key, d in _sessions.items():
+            if d['lock'].locked():
+                continue
+            if _session_duration * 60 < (datetime.datetime.now() - d['last_access']).seconds:
+                logger.debug(f"{d['username']} timed out.")
+                del_sessions.append(key)
+        for key in del_sessions:
+            del _sessions[key]
 
 def _init_session():
+    global _sessions, _sessions_lock
     logger.debug("Init session")
-    session['uuid'] = uuid.uuid4().bytes
-    _sessions[session['uuid']] = {}
-    _sessions[session['uuid']]['sa'] = sspi.ServerAuth(_PKG_NAME)  # one per session
-    # TODO cleanup other entries
-
+    if 'uuid' not in session:
+        session['uuid'] = uuid = uuid4().bytes  # init uuid on client
+    else:
+        uuid = session['uuid']
+    with _sessions_lock:
+        if uuid not in _sessions:  # make sure
+            _sessions[uuid] = {
+                'sa': sspi.ServerAuth(_PKG_NAME),
+                'lock': threading.Lock(),
+                'last_access': datetime.datetime.now(),
+                }
+    cleanup_sessions()
 
 def _sspi_handler(session):
-    global _sessions
+    global _sessions, _sessions_lock
     if 'uuid' not in session or session['uuid'] not in _sessions:
         _init_session()
-    if 'username' in _sessions[session['uuid']]:
-        if _session_duration * 60 < (datetime.datetime.now() - _sessions[session['uuid']]['last_access']).seconds:
+    uuid = session['uuid']
+    if 'username' in _sessions[uuid]:  # 'username' is used to know if sspi authorized
+        if _session_duration * 60 < (datetime.datetime.now() - _sessions[uuid]['last_access']).seconds:
             logger.debug('timed out.')
-            del _sessions[session['uuid']]
+            with _sessions_lock:
+                if uuid in _sessions:  # make sure
+                    del _sessions[uuid]
             _init_session()
         else:
             logger.debug('Already authenticated')
-            _sessions[session['uuid']]['last_access'] = datetime.datetime.now()
+            with _sessions[uuid]['lock']:
+                _sessions[uuid]['last_access'] = datetime.datetime.now()
             return None
     token_encoded = None
     recv_token_encoded = request.headers.get("Authorization")
@@ -164,13 +200,25 @@ class Impersonate():
         with Impersonate():
             ...
     '''
+    def __init__(self, _session=None):
+        """ If _session is passed as argument IT MUST BE LOCKED.
+        This allows the use of Impersonate within a locked session context.
+        """
+        self._session = _session
 
     def open(self):
         '''
         Start of the impersonalisation
         '''
-        uuid = session['uuid']
-        self._sa = _sessions[uuid]['sa']
+        global _sessions, _sessions_lock
+        if not self._session:
+            uuid = session['uuid']
+            with _sessions_lock:
+                _sessions[uuid]['lock'].acquire() # make sure to unlock
+                self.lock = _sessions[uuid]['lock']
+                self._sa = _sessions[uuid]['sa']
+        else:
+            self._sa = self._session['sa']
         self._sa.ctxt.ImpersonateSecurityContext()
 
     def close(self):
@@ -180,6 +228,8 @@ class Impersonate():
         if self._sa:
             self._sa.ctxt.RevertSecurityContext()
             self._sa = None
+            if not self._session:
+                self.lock.release()
 
     def __del__(self):
         if self._sa:
@@ -204,6 +254,7 @@ def requires_authentication(function):
     :returns: decorated function
     :rtype: function
     '''
+    global _sessions, _sessions_lock
 
     @wraps(function)
     def decorated(*args, **kwargs):
@@ -212,15 +263,22 @@ def requires_authentication(function):
             return ret
         else:
             uuid = session['uuid']
-            if 'username' not in _sessions[session['uuid']]:
-                # get username through impersonalisation
-                with Impersonate():
-                    current_user = _get_user_name()
-                g.current_user = current_user
-                _sessions[uuid]['username'] = current_user
-                _sessions[uuid]['last_access'] = datetime.datetime.now()
-            else:
-                g.current_user = _sessions[uuid]['username']
+            with _sessions_lock:
+                _session = _sessions[uuid]
+                lock = _session['lock']
+                lock.acquire()
+            try:
+                if 'username' not in _session:
+                    # get username through impersonalisation
+                    with Impersonate(_session):
+                        current_user = _get_user_name()
+                    g.current_user = current_user
+                    _session['username'] = current_user
+                    _session['last_access'] = datetime.datetime.now()
+                else:
+                    g.current_user = _session['username']
+            finally:
+                lock.release()
             # call route function
             response = function(g.current_user, *args, **kwargs)
             response = make_response(response)
@@ -239,6 +297,7 @@ def authenticate(function):
     :returns: decorated function
     :rtype: function
     '''
+    global _sessions, _sessions_lock
 
     @wraps(function)
     def decorated(*args, **kwargs):
@@ -247,15 +306,22 @@ def authenticate(function):
             return ret
         else:
             uuid = session['uuid']
-            if 'username' not in _sessions[session['uuid']]:
-                # get username through impersonalisation
-                with Impersonate():
-                    current_user = _get_user_name()
-                g.current_user = current_user
-                _sessions[uuid]['username'] = current_user
-                _sessions[uuid]['last_access'] = datetime.datetime.now()
-            else:
-                g.current_user = _sessions[uuid]['username']
+            with _sessions_lock:
+                _session = _sessions[uuid]
+                lock = _session['lock']
+                lock.acquire()
+            try:
+                if 'username' not in _session:
+                    # get username through impersonalisation
+                    with Impersonate(_session):
+                        current_user = _get_user_name()
+                    g.current_user = current_user
+                    _session['username'] = current_user
+                    _session['last_access'] = datetime.datetime.now()
+                else:
+                    g.current_user = _session['username']
+            finally:
+                lock.release()
             # call route function
             response = function(*args, **kwargs)
             if response:
