@@ -137,7 +137,6 @@ def cleanup_sessions():
             if d['lock'].locked():
                 continue
             if _session_duration * 60 < (datetime.datetime.now() - d['last_access']).seconds:
-                logger.debug(f"{d['username']} timed out.")
                 del_sessions.append(key)
         for key in del_sessions:
             del _sessions[key]
