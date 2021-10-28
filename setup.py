@@ -15,7 +15,7 @@ Links
 from setuptools import setup
 
 setup(name='Flask-SSPI',
-      version='0.1.2',
+      version='0.2',
       url='http://github.com/ceprio/flask-sspi',
       license='BSD',
       author='ceprio',

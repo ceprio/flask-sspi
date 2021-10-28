@@ -19,7 +19,7 @@ _session_duration = 30  # in minutes, time before a user needs to be re-authenti
 
 def _user_context_processor():
     if hasattr(g, "current_user") and g.current_user is not None:
-        return dict(current_user=g.current_user)
+        return dict(current_user=g.current_user)  # add current_user to the context of render_template (for jinja2)
     else:
         return {}
 
@@ -42,7 +42,7 @@ def init_sspi(app, service='HTTP', hostname=gethostname(), package='NTLM', add_c
     _SERVICE_NAME = "%s@%s" % (service, hostname)
     _PKG_NAME = package
 
-    if add_context_processor:
+    if add_context_processor:  # adds current_user to render_template renderer
         app.context_processor(_user_context_processor)
 
 
