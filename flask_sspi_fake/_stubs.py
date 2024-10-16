@@ -3,7 +3,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from flask import Response
-from flask import _request_ctx_stack as stack
+from flask.globals import request_ctx as stack
 from flask import make_response
 from flask import request, session, g
 from functools import wraps

@@ -5,10 +5,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 from flask import Response
-from flask import _request_ctx_stack as stack
+from flask.globals import request_ctx as stack
 from flask import make_response
 from flask import request, session, g
-import threading
+from threading import Lock
 from functools import wraps
 from socket import gethostname
 import os
@@ -17,7 +17,7 @@ from uuid import uuid4
 
 _PKG_NAME = 'NTLM'  # OR 'Negotiate' in future implementations (for kerberos)
 _sessions = {}  # There is going to be one _sessions per process 
-_sessions_lock = threading.Lock()  # each process may have threads
+_sessions_lock = Lock()  # each process may have threads
 # time before a user needs to be re-authenticated
 _session_duration = 30  # in minutes, don't change dynamically
 
@@ -50,7 +50,7 @@ def init_sspi(app, service='HTTP', hostname=gethostname(), package='NTLM', add_c
     global _SERVICE_NAME
     _SERVICE_NAME = "%s@%s" % (service, hostname)
     _PKG_NAME = package
-
+    
     if session_duration:
         _session_duration = session_duration
 
@@ -68,7 +68,7 @@ def _unauthorized(token):
     if not token:
         return Response('Unauthorized', 401, {'WWW-Authenticate': 'NTLM', 'server':'Microsoft-IIS/8.5'}, mimetype='text/html')  # this can also be Negotiate but does not work on my server
     else:
-        return Response('Unauthorized', 401, {'WWW-Authenticate': token, 'server':'Microsoft-HTTPAPI/2.0'}, mimetype='text/html')  # this can also be Negotiate but does not work on my server
+        return Response('Unauthorized', 401, {'WWW-Authenticate': token, 'server':'Microsoft-HTTPAPI/2.0'}, mimetype='text/html')
 
 
 def _forbidden():
@@ -106,20 +106,30 @@ def _sspi_authenticate(token):
     global _sessions, _sessions_lock
     uuid = session['uuid']
     if token.startswith(_PKG_NAME):
-        recv_token_encoded = ''.join(token.split()[1:])
+        auth_type, recv_token_encoded = token.split()
+        if auth_type!='NTLM':
+            logger.debug(f"sspi.error: {details}")
+            raise AssertionError(f"Unknown authentication type {auth_type}")
         recv_token = base64.b64decode(recv_token_encoded)
         with _sessions_lock:
             _sa = _sessions[uuid]['sa']
             lock = _sessions[uuid]['lock']
             lock.acquire()
         try:
-            error_code, token = _sa.authorize(recv_token)
-        except sspi.error as details:
-            logger.debug(f"sspi.error: {details}")
-            #  TODO: Close _sa?
-            with _sessions_lock:
-                del  _sessions[uuid]
-            return None, None
+            for trial in range(2):
+                try:
+                    error_code, token = _sa.authorize(recv_token)
+                    break
+                except sspi.error as details:
+                    if trial==0:
+                        # do a reset in case the client is doing retrial (matlab)
+                        _sa.reset()
+                        continue
+                    logger.debug(f"sspi.error: {details}")
+                    #  TODO: Close _sa?
+                    with _sessions_lock:
+                        del  _sessions[uuid]
+                    return None, None
         finally:
             lock.release()
         token = token[0].Buffer
@@ -152,13 +162,18 @@ def _init_session():
         if uuid not in _sessions:  # make sure
             _sessions[uuid] = {
                 'sa': sspi.ServerAuth(_PKG_NAME),
-                'lock': threading.Lock(),
+                'lock': Lock(),
                 'last_access': datetime.datetime.now(),
                 }
-    cleanup_sessions()
 
 def _sspi_handler(session):
+    """
+    Handles the authentication exchange.
+    Returns None when authentication is granted, otherwise returns the 
+    response to be sent to the client.
+    """
     global _sessions, _sessions_lock
+    cleanup_sessions()
     if 'uuid' not in session or session['uuid'] not in _sessions:
         _init_session()
     uuid = session['uuid']
@@ -178,12 +193,12 @@ def _sspi_handler(session):
     recv_token_encoded = request.headers.get("Authorization")
     if recv_token_encoded:
         logger.debug(f"recv:{recv_token_encoded}")
-        rc, token_encoded = _sspi_authenticate(recv_token_encoded)
-        if rc == sspicon.SECPKG_NEGOTIATION_COMPLETE:
+        error_code, token_encoded = _sspi_authenticate(recv_token_encoded)
+        if error_code == sspicon.SECPKG_NEGOTIATION_COMPLETE:
             logger.debug("Negotiation complete")
             return None
-        elif rc not in (sspicon.SEC_I_CONTINUE_NEEDED, sspicon.SEC_I_COMPLETE_NEEDED, sspicon.SEC_I_COMPLETE_AND_CONTINUE):
-            logger.debug(f"Forbiden rc={rc}")
+        elif error_code not in (sspicon.SEC_I_CONTINUE_NEEDED, sspicon.SEC_I_COMPLETE_NEEDED, sspicon.SEC_I_COMPLETE_AND_CONTINUE):
+            logger.debug(f"Forbiden error_code={error_code}")
             return _forbidden()
     logger.debug(f"Unauthorized yet, continue: {token_encoded}")
     return _unauthorized(token_encoded)  # token is None on fist pass
@@ -300,9 +315,10 @@ def authenticate(function):
 
     @wraps(function)
     def decorated(*args, **kwargs):
-        ret = _sspi_handler(session)
-        if ret is not None:
-            return ret
+        auth_response = _sspi_handler(session)
+        if auth_response is not None:
+            auth_response = make_response(auth_response)
+            return auth_response
         else:
             uuid = session['uuid']
             with _sessions_lock:
